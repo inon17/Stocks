@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0e13">
+<title>רווח / הפסד — מעקב מניות</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0e13;
+    --panel: #11171f;
+    --panel-2: #161e28;
+    --line: #222d3a;
+    --text: #e8eef5;
+    --muted: #8796a8;
+    --up: #2fd27a;
+    --up-bg: rgba(47, 210, 122, .12);
+    --down: #ff5d5d;
+    --down-bg: rgba(255, 93, 93, .12);
+    --accent: #4da3ff;
+    --warn: #f5b74f;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: radial-gradient(1200px 600px at 100% -10%, #13233a 0%, transparent 60%), var(--bg);
+    color: var(--text);
+    font-family: "Heebo", system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+    font-size: 15px;
+    line-height: 1.45;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+  .num { font-variant-numeric: tabular-nums; direction: ltr; unicode-bidi: isolate; display: inline-block; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 20px 16px calc(40px + env(safe-area-inset-bottom)); }
+
+  /* Header */
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .logo { width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, var(--accent), #7c5cff); display: grid; place-items: center; }
+  .logo svg { width: 20px; height: 20px; }
+  .brand h1 { font-size: 19px; margin: 0; font-weight: 800; letter-spacing: -.2px; }
+  .brand small { display: block; color: var(--muted); font-size: 12px; font-weight: 400; }
+  .status-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .pill { display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); font-size: 13px; color: var(--muted); white-space: nowrap; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+  .dot.on { background: var(--up); animation: pulse 1.8s infinite; }
+  .dot.off { background: var(--down); }
+  .dot.wait { background: var(--warn); }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(47,210,122,.55); } 70% { box-shadow: 0 0 0 7px rgba(47,210,122,0); } 100% { box-shadow: 0 0 0 0 rgba(47,210,122,0); } }
+
+  /* Banner (shown only when the local server is not reachable) */
+  .banner { display: none; background: rgba(245,183,79,.1); border: 1px solid rgba(245,183,79,.35); color: #ffd99a; padding: 12px 14px; border-radius: var(--radius); margin-bottom: 18px; font-size: 14px; }
+  .banner.show { display: block; }
+  .banner code { background: rgba(0,0,0,.35); padding: 1px 6px; border-radius: 5px; direction: ltr; unicode-bidi: isolate; }
+
+  /* Summary */
+  .summary { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 12px; margin-bottom: 18px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; }
+  .card .label { color: var(--muted); font-size: 13px; margin-bottom: 6px; }
+  .card .big { font-size: 34px; font-weight: 800; letter-spacing: -.5px; }
+  .card .mid { font-size: 22px; font-weight: 700; }
+  .card .sub { font-size: 14px; margin-top: 4px; color: var(--muted); }
+  .hero.up { background: linear-gradient(160deg, var(--up-bg), var(--panel) 70%); border-color: rgba(47,210,122,.3); }
+  .hero.down { background: linear-gradient(160deg, var(--down-bg), var(--panel) 70%); border-color: rgba(255,93,93,.3); }
+  .up-t { color: var(--up); }
+  .down-t { color: var(--down); }
+  .chip { display: inline-block; padding: 2px 8px; border-radius: 6px; font-weight: 700; font-size: 14px; }
+  .chip.up { background: var(--up-bg); color: var(--up); }
+  .chip.down { background: var(--down-bg); color: var(--down); }
+  .chip.flat { background: var(--panel-2); color: var(--muted); }
+  #best, #worst { display: inline-flex; gap: 10px; align-items: baseline; }
+
+  /* Add form: one or more entry lines */
+  .add-line { display: grid; grid-template-columns: 1.2fr 1fr 40px; gap: 10px; align-items: end; }
+  .add-line + .add-line { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); }
+  .field label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 5px; }
+  input { width: 100%; background: var(--bg); border: 1px solid var(--line); color: var(--text); padding: 11px 12px; border-radius: 10px; font: inherit; font-size: 16px; outline: none; }
+  input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(77,163,255,.15); }
+  input.err { border-color: var(--down); }
+  input.ltr { direction: ltr; text-align: left; }
+  .form-actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+  .btn { background: var(--accent); color: #04101f; border: 0; padding: 11px 18px; border-radius: 10px; font: inherit; font-weight: 700; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+  .btn:hover { filter: brightness(1.1); }
+  .btn.ghost { background: transparent; color: var(--text); border: 1px dashed #3a4a5e; }
+  .btn.ghost:hover { border-color: var(--accent); color: var(--accent); }
+  .form-err { color: var(--down); font-size: 13px; min-height: 18px; margin-top: 8px; }
+  .section-title { display: flex; align-items: baseline; justify-content: space-between; margin: 22px 2px 10px; }
+  .section-title h2 { font-size: 16px; margin: 0; }
+  .section-title span { color: var(--muted); font-size: 13px; }
+
+  /* Positions */
+  .table { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .row { display: grid; grid-template-columns: 2fr 1fr 1fr 40px; gap: 8px; align-items: center; padding: 13px 16px; border-top: 1px solid var(--line); }
+  .row.head { border-top: 0; color: var(--muted); font-size: 12.5px; background: var(--panel-2); padding-top: 10px; padding-bottom: 10px; }
+  .row .sym { font-weight: 800; font-size: 16px; direction: ltr; unicode-bidi: isolate; }
+  .row .sym-sub { display: block; font-size: 12px; color: var(--muted); font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .row .c-sym { min-width: 0; }
+  .row .mlabel { display: none; }
+    .row .chip { transition: box-shadow .6s; }
+  .flash-up { box-shadow: 0 0 0 3px rgba(47,210,122,.45) !important; transition: none !important; }
+  .flash-down { box-shadow: 0 0 0 3px rgba(255,93,93,.45) !important; transition: none !important; }
+  .del { background: transparent; border: 0; color: var(--muted); cursor: pointer; width: 34px; height: 34px; border-radius: 8px; display: grid; place-items: center; }
+  .del:hover { color: var(--down); background: var(--down-bg); }
+  .del[hidden] { visibility: hidden; display: grid; }
+  .empty { padding: 40px 16px; text-align: center; color: var(--muted); }
+  .empty b { color: var(--text); display: block; font-size: 16px; margin-bottom: 4px; }
+
+
+  /* Tablet */
+  @media (max-width: 860px) {
+    .summary { grid-template-columns: 1fr 1fr; }
+    .summary .hero { grid-column: 1 / -1; }
+  }
+
+  /* Mobile */
+  @media (max-width: 680px) {
+    .wrap { padding-top: 14px; }
+    .card .big { font-size: 30px; }
+    .card .mid { font-size: 19px; }
+    .add-line { grid-template-columns: 1.2fr 1fr 34px; grid-template-areas: "sym buy rm"; }
+    .add-line .f-sym { grid-area: sym; }
+    .add-line .f-buy { grid-area: buy; } .add-line .rm { grid-area: rm; align-self: end; }
+    .form-actions .btn { flex: 1; justify-content: center; padding: 13px; }
+    .table { background: transparent; border: 0; display: grid; gap: 10px; }
+    .row.head { display: none; }
+    .row {
+      background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+      grid-template-columns: 1fr 1fr; grid-template-areas:
+        "sym pct"
+        "day del";
+      row-gap: 10px; padding: 14px;
+    }
+    .row .mlabel { display: block; font-size: 11.5px; color: var(--muted); }
+    .c-sym { grid-area: sym; } .c-pct { grid-area: pct; text-align: left; }
+    .c-day { grid-area: day; } .c-del { grid-area: del; justify-self: end; align-self: end; }
+    .c-pct .chip { font-size: 17px; padding: 4px 10px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <div class="logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="15 7 21 7 21 13"/></svg>
+      </div>
+      <h1>רווח / הפסד<small>מעקב מניות · בורסת ניו יורק</small></h1>
+    </div>
+    <div class="status-bar">
+      <span class="pill" title="מצב המסחר בבורסה האמריקאית"><span class="dot" id="mktDot"></span><span id="mktText">בודק…</span></span>
+      <span class="pill" title="שעון ניו יורק"><span>NY</span> <span class="num" id="nyClock">--:--:--</span></span>
+      <span class="pill" title="חיבור לנתונים"><span class="dot" id="connDot"></span><span id="connText">מתחבר…</span></span>
+    </div>
+  </header>
+
+  <div class="banner" id="srvBanner">
+    אין חיבור לשרת המחירים. כדי לקבל מחירים, הפעל את הקובץ <code>start.bat</code> שבתיקייה (או <code>python server.py</code>) והאתר ייפתח בכתובת <code>http://127.0.0.1:8000</code>.
+  </div>
+
+  <section class="summary">
+    <div class="card hero" id="heroCard">
+      <div class="label">רווח / הפסד כולל</div>
+      <div class="big"><span class="num" id="totPct">—</span></div>
+      <div class="sub"><span id="posCount">0 פוזיציות</span></div>
+    </div>
+    <div class="card">
+      <div class="label">שינוי היום</div>
+      <div class="mid"><span class="num" id="totDay">—</span></div>
+      <div class="sub">מאז סגירת יום המסחר הקודם</div>
+    </div>
+    <div class="card">
+      <div class="label">הכי טובה / הכי חלשה</div>
+      <div class="mid" style="font-size:16px"><span id="best">—</span></div>
+      <div class="sub"><span id="worst">—</span></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <form id="addForm" novalidate>
+      <div id="addLines"></div>
+      <div class="form-actions">
+        <button class="btn ghost" type="button" id="moreBtn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          עוד מניה
+        </button>
+        <button class="btn" type="submit" id="submitBtn">הוספה לתיק</button>
+      </div>
+    </form>
+    <div class="form-err" id="formErr" role="alert"></div>
+  </section>
+
+  <div class="section-title">
+    <h2>הפוזיציות שלי</h2>
+    <span id="lastUpd">—</span>
+  </div>
+
+  <div class="table" id="table">
+    <div class="row head">
+      <div>מניה</div><div>היום</div><div>רווח / הפסד</div><div></div>
+    </div>
+    <div id="rows"></div>
+  </div>
+
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  const POLL_MS = 3000;
+  const LS_POS = 'pl.positions.v1';
+  const SYM_RE = /^[A-Z][A-Z0-9.\-]{0,9}$/;
+  const MARKET_REF = 'SPY'; // always asked for, so market status works even with an empty list
+
+  // ---------- Storage ----------
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+  };
+  let positions = store.get(LS_POS, []).filter(p => p && SYM_RE.test(p.symbol) && p.buy > 0);
+  const quotes = {};   // symbol -> {price, prevClose, name, invalid}
+  const save = () => store.set(LS_POS, positions);
+  const symbols = () => [...new Set(positions.map(p => p.symbol))];
+
+  // ---------- Helpers ----------
+  const $ = id => document.getElementById(id);
+  const pctStr = n => (n > 0 ? '+' : n < 0 ? '−' : '') + Math.abs(n).toFixed(2) + '%';
+  const cls = n => n > 0 ? 'up' : n < 0 ? 'down' : 'flat';
+  const tone = n => 'num ' + (n > 0 ? 'up-t' : n < 0 ? 'down-t' : '');
+  const parseNum = s => { const t = String(s).replace(/[,\s$]/g, ''); if (!t) return NaN; const n = Number(t); return Number.isFinite(n) ? n : NaN; };
+  function el(tag, className, text) {
+    const e = document.createElement(tag);
+    if (className) e.className = className;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+  const num = (text, extra) => el('span', 'num' + (extra ? ' ' + extra : ''), text);
+  const TRASH = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>';
+  const CROSS = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+
+  // ---------- Add form with "add another" lines ----------
+  const addLines = $('addLines');
+  function addLine(focus) {
+    const line = el('div', 'add-line');
+    const mk = (cls, label, ph, mode, isSym) => {
+      const f = el('div', 'field ' + cls);
+      const l = el('label', '', label);
+      const i = el('input', 'ltr');
+      i.placeholder = ph; i.autocomplete = 'off'; i.spellcheck = false;
+      if (mode) i.inputMode = mode;
+      if (isSym) {
+        i.maxLength = 10; i.setAttribute('autocapitalize', 'characters');
+        i.addEventListener('input', () => { const p = i.selectionStart; i.value = i.value.toUpperCase(); i.setSelectionRange(p, p); });
+      }
+      i.addEventListener('input', () => i.classList.remove('err'));
+      const id = 'f' + Math.random().toString(36).slice(2, 9);
+      i.id = id; l.htmlFor = id;
+      f.append(l, i);
+      return f;
+    };
+    const rm = el('button', 'del rm');
+    rm.type = 'button'; rm.title = 'הסרת שורה'; rm.setAttribute('aria-label', 'הסרת שורה'); rm.innerHTML = CROSS;
+    rm.addEventListener('click', () => { line.remove(); refreshLineButtons(); });
+    line.append(
+      mk('f-sym', 'סימבול (לדוגמה AAPL)', 'AAPL', null, true),
+      mk('f-buy', 'מחיר קנייה', '150.00', 'decimal'),
+      rm
+    );
+    addLines.appendChild(line);
+    refreshLineButtons();
+    if (focus) line.querySelector('input').focus();
+  }
+  function refreshLineButtons() {
+    const lines = addLines.querySelectorAll('.add-line');
+    lines.forEach(l => { l.querySelector('.rm').hidden = lines.length === 1; });
+    $('submitBtn').textContent = lines.length > 1 ? 'הוספת ' + lines.length + ' מניות לתיק' : 'הוספה לתיק';
+  }
+  $('moreBtn').addEventListener('click', () => addLine(true));
+
+  $('addForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const err = $('formErr');
+    const lines = [...addLines.querySelectorAll('.add-line')];
+    const items = [];
+    for (let i = 0; i < lines.length; i++) {
+      const [sI, bI] = lines[i].querySelectorAll('input');
+      const rawS = sI.value.trim(), rawB = bI.value.trim();
+      if (!rawS && !rawB) continue;             // fully empty line: skip
+      const where = lines.length > 1 ? ' (שורה ' + (i + 1) + ')' : '';
+      const sym = rawS.toUpperCase(), buy = parseNum(rawB);
+      if (!SYM_RE.test(sym)) { sI.classList.add('err'); sI.focus(); err.textContent = 'סימבול לא תקין' + where + ' — אותיות באנגלית, למשל AAPL או BRK-B'; return; }
+      if (!(buy > 0)) { bI.classList.add('err'); bI.focus(); err.textContent = 'מחיר הקנייה חייב להיות מספר גדול מ-0' + where; return; }
+      items.push({ symbol: sym, buy });
+    }
+    if (!items.length) { err.textContent = 'מלא לפחות שורה אחת'; lines[0].querySelector('input').focus(); return; }
+    err.textContent = '';
+    for (const it of items) positions.push({ id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()), ...it });
+    save();
+    renderRows();
+    addLines.replaceChildren();
+    addLine(true);
+    poll();                                               // fetch the new symbols right away
+  });
+
+  // ---------- Positions list ----------
+  const rowRefs = new Map();
+  function cell(area, label, content) {
+    const c = el('div', area);
+    if (label) c.appendChild(el('span', 'mlabel', label));
+    if (content) c.appendChild(content);
+    return c;
+  }
+  function renderRows() {
+    const box = $('rows');
+    box.replaceChildren();
+    rowRefs.clear();
+    if (!positions.length) {
+      const e = el('div', 'empty');
+      e.appendChild(el('b', '', 'אין עדיין פוזיציות'));
+      e.appendChild(document.createTextNode('הזן סימבול ומחיר קנייה למעלה כדי להתחיל.'));
+      box.appendChild(e);
+      updateTotals();
+      return;
+    }
+    for (const p of positions) {
+      const r = el('div', 'row');
+      const symWrap = el('div');
+      symWrap.appendChild(el('span', 'sym', p.symbol));
+      const sub = el('span', 'sym-sub', '');
+      symWrap.appendChild(sub);
+      const day = el('span', 'chip flat'); day.appendChild(num('—'));
+      const pct = el('span', 'chip flat'); pct.appendChild(num('—'));
+      const del = el('button', 'del');
+      del.type = 'button'; del.title = 'מחיקה'; del.setAttribute('aria-label', 'מחיקת ' + p.symbol); del.innerHTML = TRASH;
+      del.addEventListener('click', () => {
+        if (!confirm('למחוק את ' + p.symbol + ' מהתיק?')) return;
+        positions = positions.filter(x => x.id !== p.id);
+        save(); renderRows();
+      });
+      r.append(
+        cell('c-sym', '', symWrap),
+        cell('c-day', 'היום', day),
+        cell('c-pct', 'רווח / הפסד', pct),
+        cell('c-del', '', del)
+      );
+      box.appendChild(r);
+      rowRefs.set(p.id, { day, pct, sub, last: NaN });
+      updateRow(p);
+    }
+    updateTotals();
+  }
+
+  function updateRow(p) {
+    const ref = rowRefs.get(p.id);
+    if (!ref) return;
+    const q = quotes[p.symbol];
+    const price = q && Number.isFinite(q.price) ? q.price : NaN;
+
+    // Sub line: company name only (no prices shown anywhere, percentages only)
+    ref.sub.className = 'sym-sub';
+    if (q && q.invalid) { ref.sub.textContent = 'סימבול לא נמצא'; ref.sub.classList.add('down-t'); }
+    else {
+      ref.sub.replaceChildren();
+      if (q && q.name) { const n = el('bdi', '', q.name); n.dir = 'ltr'; ref.sub.appendChild(n); }
+    }
+
+    // Today's move in %
+    if (q && q.prevClose > 0 && Number.isFinite(price)) {
+      const d = (price - q.prevClose) / q.prevClose * 100;
+      ref.day.className = 'chip ' + cls(d);
+      ref.day.firstChild.textContent = pctStr(d);
+    } else { ref.day.className = 'chip flat'; ref.day.firstChild.textContent = '—'; }
+
+    // Flash the P/L chip when the live price moves
+    if (Number.isFinite(ref.last) && Number.isFinite(price) && price !== ref.last) {
+      const f = price > ref.last ? 'flash-up' : 'flash-down';
+      ref.pct.classList.remove('flash-up', 'flash-down');
+      void ref.pct.offsetWidth;
+      setTimeout(() => ref.pct.classList.remove(f), 350);
+      ref.pct.classList.add(f);
+    }
+    ref.last = price;
+
+    if (!Number.isFinite(price)) { ref.pct.className = 'chip flat'; ref.pct.firstChild.textContent = '—'; return; }
+    const pc = (price - p.buy) / p.buy * 100;
+    ref.pct.className = 'chip ' + cls(pc);
+    ref.pct.firstChild.textContent = pctStr(pc);
+  }
+
+  function updateTotals() {
+    // No quantities: every stock counts equally, so totals are simple averages of the % values.
+    let sumPc = 0, sumDay = 0, dayN = 0, priced = 0;
+    const perPos = [];
+    for (const p of positions) {
+      const q = quotes[p.symbol];
+      if (!q || !Number.isFinite(q.price)) continue;
+      priced++;
+      const x = (q.price - p.buy) / p.buy * 100;
+      sumPc += x;
+      perPos.push({ sym: p.symbol, pc: x });
+      if (q.prevClose > 0) { sumDay += (q.price - q.prevClose) / q.prevClose * 100; dayN++; }
+    }
+    const pc = priced ? sumPc / priced : 0;
+    $('totPct').textContent = priced ? pctStr(pc) : '—';
+    $('totPct').className = priced ? tone(pc) : 'num';
+    $('heroCard').className = 'card hero ' + (priced ? (pc > 0 ? 'up' : pc < 0 ? 'down' : '') : '');
+
+    const td = $('totDay');
+    if (dayN > 0) { const d = sumDay / dayN; td.textContent = pctStr(d); td.className = tone(d); }
+    else { td.textContent = '—'; td.className = 'num'; }
+
+    const best = $('best'), worst = $('worst');
+    best.replaceChildren(); worst.replaceChildren();
+    if (perPos.length) {
+      perPos.sort((a, b) => b.pc - a.pc);
+      const put = (box, x) => box.append(el('span', 'num', x.sym), el('span', tone(x.pc), pctStr(x.pc)));
+      put(best, perPos[0]);
+      if (perPos.length > 1) put(worst, perPos[perPos.length - 1]); else worst.textContent = '—';
+    } else { best.textContent = '—'; worst.textContent = '—'; }
+
+    const n = positions.length;
+    $('posCount').textContent = (n === 1 ? 'פוזיציה אחת' : n + ' פוזיציות') + (n && priced < n ? ' · ' + (n - priced) + ' ללא מחיר' : '');
+  }
+
+  // ---------- Status pills ----------
+  function setConn(state, text) {
+    $('connDot').className = 'dot ' + state;
+    $('connText').textContent = text;
+  }
+  const MARKET_TEXT = { open: ['on', 'הבורסה פתוחה'], pre: ['wait', 'טרום מסחר'], post: ['wait', 'אחרי שעות המסחר'], closed: ['off', 'הבורסה סגורה'] };
+  function setMarket(state) {
+    const [d, t] = MARKET_TEXT[state] || ['', '—'];
+    $('mktDot').className = 'dot ' + d;
+    $('mktText').textContent = t;
+  }
+  const nyFmt = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  const tickClock = () => { $('nyClock').textContent = nyFmt.format(new Date()); };
+
+  // ---------- Polling the local server ----------
+  let inFlight = false, failures = 0, pollTimer = null;
+  async function poll() {
+    clearTimeout(pollTimer);
+    if (inFlight) { pollTimer = setTimeout(poll, POLL_MS); return; }
+    inFlight = true;
+    const started = Date.now();
+    try {
+      if (location.protocol === 'file:') throw new Error('file');
+      const list = [...new Set([...symbols(), MARKET_REF])];
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), 8000);
+      const res = await fetch('/api/quotes?symbols=' + encodeURIComponent(list.join(',')), { cache: 'no-store', signal: ctl.signal });
+      clearTimeout(t);
+      if (!res.ok) throw new Error('http ' + res.status);
+      const data = await res.json();
+      let upstreamDown = false;
+      for (const [sym, q] of Object.entries(data.quotes || {})) {
+        if (q.error) { upstreamDown = true; continue; }       // keep the last good price
+        quotes[sym] = q.invalid ? { invalid: true } : { price: q.price, prevClose: q.prevClose, name: q.name };
+      }
+      if (data.market) setMarket(data.market);
+      failures = 0;
+      $('srvBanner').classList.remove('show');
+      setConn(upstreamDown ? 'wait' : 'on', upstreamDown ? 'מקור המחירים לא זמין' : 'חי');
+      for (const p of positions) updateRow(p);
+      updateTotals();
+      $('lastUpd').textContent = 'עודכן ' + new Date().toLocaleTimeString('he-IL');
+    } catch (e) {
+      failures++;
+      setConn('off', 'אין חיבור');
+      if (failures >= 2 || e.message === 'file') $('srvBanner').classList.add('show');
+    } finally {
+      inFlight = false;
+      // Start-to-start every 3 s, so server latency does not stretch the cycle.
+      if (document.visibilityState === 'visible') pollTimer = setTimeout(poll, Math.max(500, POLL_MS - (Date.now() - started)));
+    }
+  }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') poll(); });
+
+  // ---------- Boot ----------
+  addLine(false);
+  renderRows();
+  tickClock();
+  setInterval(tickClock, 1000);
+  poll();
+})();
+</script>
+</body>
+</html>
