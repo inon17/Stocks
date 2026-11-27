@@ -107,6 +107,9 @@
   .row { display: grid; grid-template-columns: 1.7fr 1fr .9fr 1.3fr 40px; gap: 8px; align-items: center; padding: 13px 16px; border-top: 1px solid var(--line); }
   .row.head { border-top: 0; color: var(--muted); font-size: 12.5px; background: var(--panel-2); padding-top: 10px; padding-bottom: 10px; }
   .row .sym { font-weight: 800; font-size: 16px; direction: ltr; unicode-bidi: isolate; }
+  .add-card { margin-top: 18px; }
+  .row .sym-buy { display: block; margin-top: 3px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .row .sym-buy b { color: var(--text, #e6edf3); font-weight: 600; font-variant-numeric: tabular-nums; }
   .row .sym-sub { display: block; font-size: 12px; color: var(--muted); font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
   .row .c-sym { min-width: 0; }
   .row .mlabel { display: none; }
@@ -191,7 +194,19 @@
     </div>
   </section>
 
-  <section class="card">
+  <div class="section-title">
+    <h2>הפוזיציות שלי</h2>
+    <span id="lastUpd">—</span>
+  </div>
+
+  <div class="table" id="table">
+    <div class="row head">
+      <div>מניה</div><div>רווח / הפסד</div><div>היום</div><div>מחוץ לשעות המסחר</div><div></div>
+    </div>
+    <div id="rows"></div>
+  </div>
+
+  <section class="card add-card">
     <form id="addForm" novalidate>
       <div id="addLines"></div>
       <div class="form-actions">
@@ -204,18 +219,6 @@
     </form>
     <div class="form-err" id="formErr" role="alert"></div>
   </section>
-
-  <div class="section-title">
-    <h2>הפוזיציות שלי</h2>
-    <span id="lastUpd">—</span>
-  </div>
-
-  <div class="table" id="table">
-    <div class="row head">
-      <div>מניה</div><div>רווח / הפסד</div><div>היום</div><div>מחוץ לשעות המסחר</div><div></div>
-    </div>
-    <div id="rows"></div>
-  </div>
 
 </div>
 
@@ -344,6 +347,10 @@
       symWrap.appendChild(el('span', 'sym', p.symbol));
       const sub = el('span', 'sym-sub', '');
       symWrap.appendChild(sub);
+      // Average buy price as entered by the user
+      const buy = el('span', 'sym-buy', 'קנייה ממוצע ');
+      const buyVal = el('b'); buyVal.dir = 'ltr'; buyVal.textContent = '$' + fmtBuy(p.buy);
+      buy.appendChild(buyVal); symWrap.appendChild(buy);
       const day = el('span', 'chip flat'); day.appendChild(num('—'));
       const ext = el('span', 'ext none', '—');
       const pct = el('span', 'chip flat'); pct.appendChild(num('—'));
@@ -374,7 +381,7 @@
     const q = quotes[p.symbol];
     const price = q && Number.isFinite(q.price) ? q.price : NaN;
 
-    // Sub line: company name only (no prices shown anywhere, percentages only)
+    // Sub line: company name
     ref.sub.className = 'sym-sub';
     if (q && q.invalid) { ref.sub.textContent = 'סימבול לא נמצא'; ref.sub.classList.add('down-t'); }
     else {
@@ -427,6 +434,8 @@
     node.innerHTML = pre ? SUN : MOON;
     node.append(el('span', 'lbl', pre ? 'לפני פתיחה' : 'אחרי סגירה'), el('span', 'v ' + tone(e.pct), pctStr(e.pct)));
   }
+
+  function fmtBuy(n) { return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 }); }
 
   function updateTotals() {
     // No quantities: every stock counts equally, so totals are simple averages of the % values.
