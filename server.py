@@ -13,10 +13,12 @@ Usage:
 Standard library only, nothing to install.
 """
 import argparse
+import calendar
 import json
 import logging
 import re
 import socket
+import subprocess
 import threading
 import time
 import urllib.error
@@ -33,6 +35,13 @@ CACHE_SECONDS = 2.0          # many browser tabs polling every 3 s still hit Yah
 # 1-minute bars incl. pre/post market, so we can show the extended-hours move too
 YAHOO = "https://query1.finance.yahoo.com/v8/finance/chart/{}?interval=1m&range=1d&includePrePost=true"
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+# Yahoo's chart often has no pre-market bars (e.g. the day after a holiday), so outside regular
+# hours we also ask Nasdaq's public quote API, which has real-time pre/after-hours trades. No key.
+NASDAQ = "https://api.nasdaq.com/api/quote/{}/info?assetclass={}"
+NASDAQ_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
+MONTHS = {m: i for i, m in enumerate("Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(), 1)}
+NASDAQ_TIME_RE = re.compile(r"([A-Z][a-z]{2}) (\d{1,2}), (\d{4}) (\d{1,2}):(\d{2}) (AM|PM)")
+_asset_class = {}            # symbol -> "stocks" | "etf"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -77,6 +86,47 @@ def extended(res, meta):
     return None
 
 
+def parse_nasdaq_time(txt, gmtoffset):
+    """'Nov 27, 2026 6:37 AM ET' -> unix seconds, using the exchange's UTC offset from Yahoo."""
+    m = NASDAQ_TIME_RE.search(txt or "")
+    if not m or m.group(1) not in MONTHS or not isinstance(gmtoffset, (int, float)):
+        return None
+    hour = int(m.group(4)) % 12 + (12 if m.group(6) == "PM" else 0)
+    t = calendar.timegm((int(m.group(3)), MONTHS[m.group(1)], int(m.group(2)), hour, int(m.group(5)), 0))
+    return t - gmtoffset
+
+
+def nasdaq_ext(sym, gmtoffset, reg_time):
+    """Latest pre-market / after-hours trade from Nasdaq, or None."""
+    nsym = sym.replace("-", ".")             # Yahoo BRK-B = Nasdaq BRK.B
+    classes = [_asset_class[sym]] if sym in _asset_class else ["stocks", "etf"]
+    for cls in classes:
+        # Nasdaq refuses Python's own HTTP client (403), so use curl.exe (built into Windows 10/11).
+        # Arguments are passed as a list (no shell) and the symbol was already validated by SYM_RE.
+        cmd = ["curl", "-s", "-f", "-m", "4", "-A", NASDAQ_UA, "-H", "Accept: application/json",
+               NASDAQ.format(urllib.parse.quote(nsym), cls)]
+        try:
+            out = subprocess.run(cmd, capture_output=True, timeout=6, check=True).stdout
+            d = json.loads(out).get("data")
+        except Exception as e:
+            log.warning("Nasdaq failed for %s: %s", sym, e)
+            return None
+        if not d:
+            continue                          # wrong asset class, try the next one
+        _asset_class[sym] = cls
+        session = {"Pre-Market": "pre", "After-Hours": "post"}.get(d.get("marketStatus"))
+        p = d.get("primaryData") or {}
+        try:
+            price = float(str(p.get("lastSalePrice") or "").replace("$", "").replace(",", ""))
+        except ValueError:
+            return None
+        t = parse_nasdaq_time(p.get("lastTradeTimestamp"), gmtoffset)
+        if not session or price <= 0 or not t or t <= reg_time + 60:
+            return None
+        return {"price": round(price, 4), "session": session, "time": t}
+    return None
+
+
 def fetch_symbol(sym):
     now = time.time()
     with _cache_lock:
@@ -95,14 +145,20 @@ def fetch_symbol(sym):
             m = res[0]["meta"]
             price = m.get("regularMarketPrice")
             prev = m.get("chartPreviousClose") or m.get("previousClose")
+            market = market_state(m.get("currentTradingPeriod"), now)
+            ext = extended(res[0], m)
+            if market in ("pre", "post") and price is not None:
+                nq = nasdaq_ext(sym, m.get("gmtoffset"), m.get("regularMarketTime") or 0)
+                if nq and (not ext or nq["time"] >= ext["time"]):
+                    ext = nq                  # use whichever trade is newer
             data = {
                 "price": price,
                 "prevClose": prev,
                 "time": m.get("regularMarketTime"),
                 "name": m.get("longName") or m.get("shortName"),
                 "exchange": m.get("fullExchangeName") or m.get("exchangeName"),
-                "market": market_state(m.get("currentTradingPeriod"), now),
-                "ext": extended(res[0], m),
+                "market": market,
+                "ext": ext,
             }
             if price is None:
                 data = {"invalid": True}

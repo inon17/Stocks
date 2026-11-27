@@ -8,6 +8,12 @@ const YAHOO = 'https://query1.finance.yahoo.com/v8/finance/chart/';
 // 1-minute bars incl. pre/post market, so we can show the extended-hours move too
 const QUERY = '?interval=1m&range=1d&includePrePost=true';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)';
+// Yahoo's chart often has no pre-market bars (e.g. the day after a holiday), so outside regular
+// hours we also ask Nasdaq's public quote API, which has real-time pre/after-hours trades. No key.
+const NASDAQ = 'https://api.nasdaq.com/api/quote/';
+const NASDAQ_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36';
+const MONTHS = { Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5, Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11 };
+const assetClass = new Map();   // symbol -> 'stocks' | 'etf' (remembered while the function stays warm)
 
 function marketState(period, now) {
   try {
@@ -35,6 +41,42 @@ function extended(r, m) {
   return null;
 }
 
+// "Nov 27, 2026 6:37 AM ET" -> unix seconds, using the exchange's UTC offset from Yahoo (gmtoffset).
+function parseNasdaqTime(txt, gmtoffset) {
+  const m = /([A-Z][a-z]{2}) (\d{1,2}), (\d{4}) (\d{1,2}):(\d{2}) (AM|PM)/.exec(txt || '');
+  if (!m || !(m[1] in MONTHS) || !Number.isFinite(gmtoffset)) return null;
+  const h = (+m[4] % 12) + (m[6] === 'PM' ? 12 : 0);
+  return Date.UTC(+m[3], MONTHS[m[1]], +m[2], h, +m[5]) / 1000 - gmtoffset;
+}
+
+// Latest pre-market / after-hours trade from Nasdaq, or null.
+async function nasdaqExt(sym, gmtoffset, regTime) {
+  const nsym = sym.replace('-', '.');           // Yahoo BRK-B = Nasdaq BRK.B
+  const classes = assetClass.has(sym) ? [assetClass.get(sym)] : ['stocks', 'etf'];
+  for (const cls of classes) {
+    try {
+      const r = await fetch(NASDAQ + encodeURIComponent(nsym) + '/info?assetclass=' + cls, {
+        headers: { 'User-Agent': NASDAQ_UA, Accept: 'application/json' },
+        signal: AbortSignal.timeout(4000),
+      });
+      if (!r.ok) return null;
+      const d = (await r.json()).data;
+      if (!d) continue;                          // wrong asset class, try the next one
+      assetClass.set(sym, cls);
+      const session = d.marketStatus === 'Pre-Market' ? 'pre' : d.marketStatus === 'After-Hours' ? 'post' : null;
+      const p = d.primaryData || {};
+      const price = parseFloat(String(p.lastSalePrice || '').replace(/[$,]/g, ''));
+      const time = parseNasdaqTime(p.lastTradeTimestamp, gmtoffset);
+      if (!session || !(price > 0) || !time || time <= regTime + 60) return null;
+      return { price: Math.round(price * 1e4) / 1e4, session, time };
+    } catch (e) {
+      console.warn('Nasdaq failed for', sym, String(e));
+      return null;
+    }
+  }
+  return null;
+}
+
 async function fetchSymbol(sym, now) {
   try {
     const r = await fetch(YAHOO + encodeURIComponent(sym) + QUERY, {
@@ -47,14 +89,20 @@ async function fetchSymbol(sym, now) {
     if (!res || !res.length) return { invalid: true };
     const m = res[0].meta || {};
     if (m.regularMarketPrice == null) return { invalid: true };
+    const market = marketState(m.currentTradingPeriod, now);
+    let ext = extended(res[0], m);
+    if (market === 'pre' || market === 'post') {
+      const nq = await nasdaqExt(sym, m.gmtoffset, m.regularMarketTime || 0);
+      if (nq && (!ext || nq.time >= ext.time)) ext = nq;   // use whichever trade is newer
+    }
     return {
       price: m.regularMarketPrice,
       prevClose: m.chartPreviousClose ?? m.previousClose ?? null,
       time: m.regularMarketTime ?? null,
       name: m.longName || m.shortName || null,
       exchange: m.fullExchangeName || m.exchangeName || null,
-      market: marketState(m.currentTradingPeriod, now),
-      ext: extended(res[0], m),
+      market,
+      ext,
     };
   } catch (e) {
     console.warn('Fetch failed for', sym, String(e));
