@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0a0e13">
-<title>רווח / הפסד — מעקב מניות</title>
+<title>התיק שלי — מעקב מניות</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet">
@@ -104,7 +104,7 @@
 
   /* Positions */
   .table { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
-  .row { display: grid; grid-template-columns: 1.7fr 1fr .9fr 1.3fr 40px; gap: 8px; align-items: center; padding: 13px 16px; border-top: 1px solid var(--line); }
+  .row { display: grid; grid-template-columns: 1.7fr 1fr .9fr 1.3fr 76px; gap: 8px; align-items: center; padding: 13px 16px; border-top: 1px solid var(--line); }
   .row.head { border-top: 0; color: var(--muted); font-size: 12.5px; background: var(--panel-2); padding-top: 10px; padding-bottom: 10px; }
   .row .sym { font-weight: 800; font-size: 16px; direction: ltr; unicode-bidi: isolate; }
   .add-card { margin-top: 18px; }
@@ -118,6 +118,21 @@
   .flash-down { box-shadow: 0 0 0 3px rgba(255,93,93,.45) !important; transition: none !important; }
   .del { background: transparent; border: 0; color: var(--muted); cursor: pointer; width: 34px; height: 34px; border-radius: 8px; display: grid; place-items: center; }
   .del:hover { color: var(--down); background: var(--down-bg); }
+  .row .sym-buy[hidden] { display: none; }
+  .acts { display: flex; gap: 2px; justify-content: flex-end; }
+  .edit:hover { color: var(--accent, #4da3ff); background: rgba(77,163,255,.12); }
+  .edit-box { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
+  .edit-box .err:empty { display: none; }
+  .edit-box .err { flex-basis: 100%; }
+  .edit-box input { width: 110px; padding: 6px 8px; font-size: 14px; direction: ltr; }
+  .edit-box .ok, .edit-box .no { border: 0; border-radius: 8px; height: 32px; padding: 0 10px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+  .edit-box .ok { background: var(--up); color: #06210f; }
+  .edit-box .no { background: var(--panel-2); color: var(--muted); }
+  .edit-box .err { color: var(--down); font-size: 12px; }
+  /* Per-row profit/loss word, also on desktop */
+  .row .c-pct { display: flex; align-items: center; gap: 8px; }
+  .row .c-pct .mlabel { display: inline; font-size: 12.5px; font-weight: 700; }
+  .row .c-pct .mlabel.up-t { color: var(--up); } .row .c-pct .mlabel.down-t { color: var(--down); }
   .del[hidden] { visibility: hidden; display: grid; }
   .empty { padding: 40px 16px; text-align: center; color: var(--muted); }
   .empty b { color: var(--text); display: block; font-size: 16px; margin-bottom: 4px; }
@@ -142,7 +157,7 @@
     .row.head { display: none; }
     .row {
       background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
-      grid-template-columns: auto 1fr auto; grid-template-areas:
+      grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas:
         "sym sym pct"
         "day ext del";
       row-gap: 10px; padding: 14px;
@@ -151,6 +166,9 @@
     .c-sym { grid-area: sym; } .c-pct { grid-area: pct; text-align: left; }
     .c-day { grid-area: day; } .c-ext { grid-area: ext; } .c-del { grid-area: del; justify-self: end; align-self: end; }
     .c-pct .chip { font-size: 17px; padding: 4px 10px; }
+    .row .c-pct { flex-direction: column; align-items: flex-end; gap: 2px; }
+    .row .c-pct .mlabel { display: block; }
+    .row .acts { gap: 0; }
   }
 </style>
 </head>
@@ -162,7 +180,7 @@
       <div class="logo" aria-hidden="true">
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="15 7 21 7 21 13"/></svg>
       </div>
-      <h1>רווח / הפסד<small>מעקב מניות · בורסת ניו יורק</small></h1>
+      <h1>התיק שלי<small>מעקב מניות · בורסת ניו יורק</small></h1>
     </div>
     <div class="status-bar">
       <span class="pill" title="מצב המסחר בבורסה האמריקאית"><span class="dot" id="mktDot"></span><span id="mktText">בודק…</span></span>
@@ -177,7 +195,7 @@
 
   <section class="summary">
     <div class="card hero" id="heroCard">
-      <div class="label">רווח / הפסד כולל</div>
+      <div class="label" id="totLabel">רווח / הפסד כולל</div>
       <div class="big"><span class="num" id="totPct">—</span></div>
       <div class="sub"><span id="posCount">0 פוזיציות</span></div>
     </div>
@@ -201,7 +219,7 @@
 
   <div class="table" id="table">
     <div class="row head">
-      <div>מניה</div><div>רווח / הפסד</div><div>היום</div><div>מחוץ לשעות המסחר</div><div></div>
+      <div>מניה</div><div>תשואה</div><div>היום</div><div>מחוץ לשעות המסחר</div><div></div>
     </div>
     <div id="rows"></div>
   </div>
@@ -254,6 +272,7 @@
     return e;
   }
   const num = (text, extra) => el('span', 'num' + (extra ? ' ' + extra : ''), text);
+  const PENCIL = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/></svg>';
   const TRASH = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>';
   const CROSS = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 
@@ -361,15 +380,22 @@
         positions = positions.filter(x => x.id !== p.id);
         save(); renderRows();
       });
+      const pctCell = cell('c-pct', 'תשואה', pct);
+      const plLbl = pctCell.querySelector('.mlabel');
+      // Edit the average buy price in place
+      const edit = el('button', 'del edit');
+      edit.type = 'button'; edit.title = 'עריכת מחיר קנייה'; edit.setAttribute('aria-label', 'עריכת ' + p.symbol); edit.innerHTML = PENCIL;
+      edit.addEventListener('click', () => openEdit(p, buy));
+      const acts = el('div', 'acts'); acts.append(edit, del);
       r.append(
         cell('c-sym', '', symWrap),
-        cell('c-pct', 'רווח / הפסד', pct),
+        pctCell,
         cell('c-day', 'היום', day),
         cell('c-ext', 'מחוץ לשעות המסחר', ext),
-        cell('c-del', '', del)
+        cell('c-del', '', acts)
       );
       box.appendChild(r);
-      rowRefs.set(p.id, { day, ext, pct, sub, last: NaN });
+      rowRefs.set(p.id, { day, ext, pct, plLbl, sub, last: NaN });
       updateRow(p);
     }
     updateTotals();
@@ -399,18 +425,21 @@
     // Pre-market / after-hours move in %, relative to the regular-session price
     renderExt(ref.ext, extPct(q));
 
+    // P/L uses the latest trade, including pre-market / after-hours
+    const live = livePrice(q);
     // Flash the P/L chip when the live price moves
-    if (Number.isFinite(ref.last) && Number.isFinite(price) && price !== ref.last) {
-      const f = price > ref.last ? 'flash-up' : 'flash-down';
+    if (Number.isFinite(ref.last) && Number.isFinite(live) && live !== ref.last) {
+      const f = live > ref.last ? 'flash-up' : 'flash-down';
       ref.pct.classList.remove('flash-up', 'flash-down');
       void ref.pct.offsetWidth;
       setTimeout(() => ref.pct.classList.remove(f), 350);
       ref.pct.classList.add(f);
     }
-    ref.last = price;
+    ref.last = live;
 
-    if (!Number.isFinite(price)) { ref.pct.className = 'chip flat'; ref.pct.firstChild.textContent = '—'; return; }
-    const pc = (price - p.buy) / p.buy * 100;
+    if (!Number.isFinite(live)) { ref.pct.className = 'chip flat'; ref.pct.firstChild.textContent = '—'; setPL(ref.plLbl, NaN, 'תשואה'); return; }
+    const pc = (live - p.buy) / p.buy * 100;
+    setPL(ref.plLbl, pc, 'תשואה');
     ref.pct.className = 'chip ' + cls(pc);
     ref.pct.firstChild.textContent = pctStr(pc);
   }
@@ -435,6 +464,43 @@
     node.append(el('span', 'lbl', pre ? 'לפני פתיחה' : 'אחרי סגירה'), el('span', 'v ' + tone(e.pct), pctStr(e.pct)));
   }
 
+  // Latest traded price: extended-hours trade if newer than the regular session
+  function livePrice(q) {
+    if (!q || !Number.isFinite(q.price)) return NaN;
+    return q.ext && Number.isFinite(q.ext.price) ? q.ext.price : q.price;
+  }
+  // Word instead of "profit / loss": רווח when up, הפסד when down
+  function setPL(node, n, fallback, suffix) {
+    if (!node) return;
+    const t = !Number.isFinite(n) ? fallback : n > 0 ? 'רווח' : n < 0 ? 'הפסד' : 'ללא שינוי';
+    node.textContent = Number.isFinite(n) ? t + (suffix || '') : t;
+    node.classList.remove('up-t', 'down-t');
+    if (n > 0) node.classList.add('up-t'); else if (n < 0) node.classList.add('down-t');
+  }
+  function openEdit(p, buyNode) {
+    if (buyNode.dataset.editing) return;
+    buyNode.dataset.editing = '1';
+    const box = el('div', 'edit-box');
+    const inp = el('input'); inp.type = 'text'; inp.inputMode = 'decimal'; inp.value = String(p.buy); inp.setAttribute('aria-label', 'מחיר קנייה ממוצע');
+    const ok = el('button', 'ok', 'שמירה'); ok.type = 'button';
+    const no = el('button', 'no', 'ביטול'); no.type = 'button';
+    const err = el('span', 'err', '');
+    box.append(inp, ok, no, err);
+    buyNode.hidden = true; buyNode.after(box);
+    inp.focus(); inp.select();
+    const close = () => { box.remove(); buyNode.hidden = false; delete buyNode.dataset.editing; };
+    const commit = () => {
+      const v = parseNum(inp.value);
+      if (!(v > 0)) { err.textContent = 'מחיר לא תקין'; inp.focus(); return; }
+      const pos = positions.find(x => x.id === p.id);
+      if (pos) pos.buy = v;
+      save(); renderRows();
+    };
+    ok.addEventListener('click', commit);
+    no.addEventListener('click', close);
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); commit(); } else if (e.key === 'Escape') close(); });
+  }
+
   function fmtBuy(n) { return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 }); }
 
   function updateTotals() {
@@ -445,7 +511,7 @@
       const q = quotes[p.symbol];
       if (!q || !Number.isFinite(q.price)) continue;
       priced++;
-      const x = (q.price - p.buy) / p.buy * 100;
+      const x = (livePrice(q) - p.buy) / p.buy * 100;
       sumPc += x;
       perPos.push({ sym: p.symbol, pc: x });
       if (q.prevClose > 0) { sumDay += (q.price - q.prevClose) / q.prevClose * 100; dayN++; }
@@ -455,6 +521,8 @@
     const es = $('extSum');
     es.hidden = !extN;
     if (extN) renderExt(es, { pct: sumExt / extN, session: extSess }, true);
+    setPL($('totLabel'), priced ? pc : NaN, 'רווח / הפסד כולל', ' כולל');
+    $('totLabel').className = 'label';
     $('totPct').textContent = priced ? pctStr(pc) : '—';
     $('totPct').className = priced ? tone(pc) : 'num';
     $('heroCard').className = 'card hero ' + (priced ? (pc > 0 ? 'up' : pc < 0 ? 'down' : '') : '');
