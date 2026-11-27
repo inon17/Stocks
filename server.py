@@ -30,7 +30,8 @@ ROOT = Path(__file__).resolve().parent
 SYM_RE = re.compile(r"^[A-Z][A-Z0-9.\-]{0,9}$")
 MAX_SYMBOLS = 40
 CACHE_SECONDS = 2.0          # many browser tabs polling every 3 s still hit Yahoo at most every 2 s per symbol
-YAHOO = "https://query1.finance.yahoo.com/v8/finance/chart/{}?interval=1d&range=1d"
+# 1-minute bars incl. pre/post market, so we can show the extended-hours move too
+YAHOO = "https://query1.finance.yahoo.com/v8/finance/chart/{}?interval=1m&range=1d&includePrePost=true"
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
 
 logging.basicConfig(
@@ -55,6 +56,25 @@ def market_state(period, now):
     except (KeyError, TypeError):
         pass
     return "closed"
+
+
+def extended(res, meta):
+    """Latest pre/post-market price: the last 1-minute bar that is later than the regular-session price."""
+    try:
+        ts = res.get("timestamp") or []
+        closes = res["indicators"]["quote"][0]["close"]
+    except (KeyError, IndexError, TypeError):
+        return None
+    reg_time = meta.get("regularMarketTime") or 0
+    for t, c in zip(reversed(ts), reversed(closes)):
+        if c is None:
+            continue
+        if t <= reg_time + 60:
+            return None                      # latest trade is from the regular session
+        pre = (meta.get("currentTradingPeriod") or {}).get("pre") or {}
+        session = "pre" if pre.get("start", 0) <= t < pre.get("end", 0) else "post"
+        return {"price": round(c, 4), "session": session, "time": t}
+    return None
 
 
 def fetch_symbol(sym):
@@ -82,6 +102,7 @@ def fetch_symbol(sym):
                 "name": m.get("longName") or m.get("shortName"),
                 "exchange": m.get("fullExchangeName") or m.get("exchangeName"),
                 "market": market_state(m.get("currentTradingPeriod"), now),
+                "ext": extended(res[0], m),
             }
             if price is None:
                 data = {"invalid": True}
